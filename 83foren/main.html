@@ -6,6 +6,33 @@
     <title>Gửi Vô Vàn Yêu Thương Đến Em ❤️</title>
     <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+        
+        // Firebase Configuration - Public config (safe to share)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDemoKey-ReplaceWithYourKey",
+            authDomain: "love-website-demo.firebaseapp.com",
+            databaseURL: "https://love-website-demo-default-rtdb.firebaseio.com",
+            projectId: "love-website-demo",
+            storageBucket: "love-website-demo.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef123456"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        window.firebaseDB = getDatabase(app);
+        window.firebaseRef = ref;
+        window.firebasePush = push;
+        window.firebaseOnValue = onValue;
+        window.firebaseQuery = query;
+        window.firebaseOrderByChild = orderByChild;
+        window.firebaseLimitToLast = limitToLast;
+    </script>
+    
     <style>
         /* ================= CÀI ĐẶT CHUNG ================= */
         :root {
@@ -441,16 +468,73 @@
         ['mouseover', 'touchstart'].forEach(e => btnNo.addEventListener(e, ev => { ev.preventDefault(); btnNo.style.transform = `translate(${Math.floor(Math.random()*300)-150}px, ${Math.floor(Math.random()*200)-100}px)`; }));
         function sayYes() { startHeartRain(); const o = document.getElementById('success-overlay'); o.style.display = 'flex'; o.onclick = () => o.style.display = 'none'; }
 
-        // LOVE WALL
-        document.addEventListener('DOMContentLoaded', () => { let msgs = JSON.parse(localStorage.getItem('loveMessages') || '[]'); msgs.forEach(m => renderMsg(m)); });
-        function sendLoveMessage() {
-            const n = document.getElementById('sender-name').value.trim(), m = document.getElementById('love-message').value.trim();
-            if (!n || !m) return alert("Điền đủ nhé!");
-            const obj = { name: n, msg: m, date: new Date().toLocaleDateString() };
-            let msgs = JSON.parse(localStorage.getItem('loveMessages') || '[]'); msgs.push(obj); localStorage.setItem('loveMessages', JSON.stringify(msgs));
-            document.getElementById('sender-name').value = ''; document.getElementById('love-message').value = ''; renderMsg(obj); startHeartRain();
+        // LOVE WALL - Firebase Version
+        document.addEventListener('DOMContentLoaded', () => { 
+            // Load messages from Firebase
+            loadMessagesFromFirebase();
+        });
+        
+        function loadMessagesFromFirebase() {
+            if (!window.firebaseDB) {
+                console.error('Firebase not initialized');
+                return;
+            }
+            
+            const messagesRef = window.firebaseRef(window.firebaseDB, 'loveMessages');
+            const messagesQuery = window.firebaseQuery(messagesRef, window.firebaseOrderByChild('timestamp'), window.firebaseLimitToLast(50));
+            
+            window.firebaseOnValue(messagesQuery, (snapshot) => {
+                const wall = document.getElementById('love-wall');
+                wall.innerHTML = ''; // Clear existing messages
+                
+                const messages = [];
+                snapshot.forEach((childSnapshot) => {
+                    messages.push(childSnapshot.val());
+                });
+                
+                // Display messages in reverse order (newest first)
+                messages.reverse().forEach(msg => renderMsg(msg));
+            });
         }
-        function renderMsg(o) { const d = document.createElement('div'); d.className = 'message-card'; d.innerHTML = `<h4>${o.name}</h4><p>${o.msg}</p><div style="font-size:0.8rem;color:#888;margin-top:10px">${o.date}</div><div class="heart-icon">❤️</div>`; document.getElementById('love-wall').prepend(d); }
+        
+        function sendLoveMessage() {
+            const n = document.getElementById('sender-name').value.trim();
+            const m = document.getElementById('love-message').value.trim();
+            
+            if (!n || !m) return alert("Điền đủ nhé!");
+            
+            if (!window.firebaseDB) {
+                alert("Đang kết nối... Vui lòng thử lại!");
+                return;
+            }
+            
+            const obj = { 
+                name: n, 
+                msg: m, 
+                date: new Date().toLocaleDateString('vi-VN'),
+                timestamp: Date.now()
+            };
+            
+            // Save to Firebase
+            const messagesRef = window.firebaseRef(window.firebaseDB, 'loveMessages');
+            window.firebasePush(messagesRef, obj)
+                .then(() => {
+                    document.getElementById('sender-name').value = ''; 
+                    document.getElementById('love-message').value = ''; 
+                    startHeartRain();
+                })
+                .catch((error) => {
+                    console.error("Error saving message:", error);
+                    alert("Có lỗi xảy ra khi gửi tin nhắn. Vui lòng thử lại!");
+                });
+        }
+        
+        function renderMsg(o) { 
+            const d = document.createElement('div'); 
+            d.className = 'message-card'; 
+            d.innerHTML = `<h4>${o.name}</h4><p>${o.msg}</p><div style="font-size:0.8rem;color:#888;margin-top:10px">${o.date}</div><div class="heart-icon">❤️</div>`; 
+            document.getElementById('love-wall').appendChild(d); 
+        }
 
 
         // =========================================================
