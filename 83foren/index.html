@@ -468,18 +468,40 @@
         ['mouseover', 'touchstart'].forEach(e => btnNo.addEventListener(e, ev => { ev.preventDefault(); btnNo.style.transform = `translate(${Math.floor(Math.random()*300)-150}px, ${Math.floor(Math.random()*200)-100}px)`; }));
         function sayYes() { startHeartRain(); const o = document.getElementById('success-overlay'); o.style.display = 'flex'; o.onclick = () => o.style.display = 'none'; }
 
-        // LOVE WALL - Firebase Version
+        // LOVE WALL - Hybrid Version (Firebase + localStorage fallback)
+        let useFirebase = false; // Will be set to true if Firebase is properly configured
+        
         document.addEventListener('DOMContentLoaded', () => { 
-            // Load messages from Firebase
-            loadMessagesFromFirebase();
+            // Check if Firebase is properly configured
+            setTimeout(() => {
+                if (window.firebaseDB) {
+                    try {
+                        // Try to use Firebase
+                        loadMessagesFromFirebase();
+                        useFirebase = true;
+                        console.log('✅ Using Firebase for shared messages');
+                    } catch (error) {
+                        console.log('❌ Firebase not available, using localStorage');
+                        loadMessagesFromLocalStorage();
+                    }
+                } else {
+                    console.log('📦 Using localStorage (messages only visible on this device)');
+                    loadMessagesFromLocalStorage();
+                }
+            }, 100);
         });
         
+        // Load messages from localStorage
+        function loadMessagesFromLocalStorage() {
+            const msgs = JSON.parse(localStorage.getItem('loveMessages') || '[]');
+            const wall = document.getElementById('love-wall');
+            wall.innerHTML = '';
+            // Display newest first
+            msgs.reverse().forEach(m => renderMsg(m));
+        }
+        
+        // Load messages from Firebase
         function loadMessagesFromFirebase() {
-            if (!window.firebaseDB) {
-                console.error('Firebase not initialized');
-                return;
-            }
-            
             const messagesRef = window.firebaseRef(window.firebaseDB, 'loveMessages');
             const messagesQuery = window.firebaseQuery(messagesRef, window.firebaseOrderByChild('timestamp'), window.firebaseLimitToLast(50));
             
@@ -497,16 +519,12 @@
             });
         }
         
+        // Send message function
         function sendLoveMessage() {
             const n = document.getElementById('sender-name').value.trim();
             const m = document.getElementById('love-message').value.trim();
             
             if (!n || !m) return alert("Điền đủ nhé!");
-            
-            if (!window.firebaseDB) {
-                alert("Đang kết nối... Vui lòng thử lại!");
-                return;
-            }
             
             const obj = { 
                 name: n, 
@@ -515,25 +533,50 @@
                 timestamp: Date.now()
             };
             
-            // Save to Firebase
-            const messagesRef = window.firebaseRef(window.firebaseDB, 'loveMessages');
-            window.firebasePush(messagesRef, obj)
-                .then(() => {
-                    document.getElementById('sender-name').value = ''; 
-                    document.getElementById('love-message').value = ''; 
-                    startHeartRain();
-                })
-                .catch((error) => {
-                    console.error("Error saving message:", error);
-                    alert("Có lỗi xảy ra khi gửi tin nhắn. Vui lòng thử lại!");
-                });
+            // Clear input fields immediately
+            document.getElementById('sender-name').value = ''; 
+            document.getElementById('love-message').value = '';
+            
+            // Try Firebase first, fallback to localStorage
+            if (useFirebase && window.firebaseDB) {
+                const messagesRef = window.firebaseRef(window.firebaseDB, 'loveMessages');
+                window.firebasePush(messagesRef, obj)
+                    .then(() => {
+                        startHeartRain();
+                        console.log('✅ Message saved to Firebase');
+                    })
+                    .catch((error) => {
+                        console.error("Firebase error, saving to localStorage:", error);
+                        saveToLocalStorage(obj);
+                    });
+            } else {
+                // Use localStorage
+                saveToLocalStorage(obj);
+            }
         }
         
-        function renderMsg(o) { 
+        // Save to localStorage
+        function saveToLocalStorage(obj) {
+            let msgs = JSON.parse(localStorage.getItem('loveMessages') || '[]');
+            msgs.push(obj);
+            localStorage.setItem('loveMessages', JSON.stringify(msgs));
+            renderMsg(obj, true); // true = prepend (add to top)
+            startHeartRain();
+            console.log('💾 Message saved to localStorage');
+        }
+        
+        // Render message card
+        function renderMsg(o, prepend = false) { 
             const d = document.createElement('div'); 
             d.className = 'message-card'; 
             d.innerHTML = `<h4>${o.name}</h4><p>${o.msg}</p><div style="font-size:0.8rem;color:#888;margin-top:10px">${o.date}</div><div class="heart-icon">❤️</div>`; 
-            document.getElementById('love-wall').appendChild(d); 
+            
+            const wall = document.getElementById('love-wall');
+            if (prepend) {
+                wall.insertBefore(d, wall.firstChild);
+            } else {
+                wall.appendChild(d);
+            }
         }
 
 
